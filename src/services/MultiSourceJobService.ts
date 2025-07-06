@@ -310,22 +310,60 @@ export class MultiSourceJobService {
       }
     });
 
-    // If no jobs found from edge functions, try ATS fallback
+    // If no jobs found from edge functions, try FREE methods cascade
     if (allJobs.length === 0) {
-      console.log('🔄 No jobs from APIs, trying ATS fallback...');
+      console.log('🔄 No jobs from APIs, trying FREE methods cascade...');
       
+      // 1. Try Creative Free Methods (RSS, free APIs, etc.)
       try {
-        const { ATSService } = await import('./ATSService');
-        const atsResult = await ATSService.fetchJobsForCompany(companyName);
+        const { CreativeJobSearchService } = await import('./CreativeJobSearchService');
+        const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
+          includeRSS: true,
+          includeFreeAPIs: true,
+          includeSocialMedia: true
+        });
         
-        if (atsResult.success && atsResult.jobs.length > 0) {
-          allJobs.push(...atsResult.jobs);
-          sources.push(...atsResult.sources);
-          console.log(`✅ ATS Fallback: Found ${atsResult.jobs.length} jobs`);
+        if (creativeResult.success && creativeResult.jobs.length > 0) {
+          allJobs.push(...creativeResult.jobs);
+          sources.push(...creativeResult.sources.map(s => `${s} (Free)`));
+          console.log(`✅ Creative Free Methods: Found ${creativeResult.jobs.length} jobs`);
         }
-      } catch (atsError) {
-        console.warn('ATS fallback failed:', atsError);
-        errors.push('ATS Fallback: Failed to load');
+      } catch (creativeError) {
+        console.warn('Creative free methods failed:', creativeError);
+        errors.push('Creative Free Methods: Failed to load');
+      }
+
+      // 2. If still no jobs, try ATS fallback
+      if (allJobs.length === 0) {
+        try {
+          const { ATSService } = await import('./ATSService');
+          const atsResult = await ATSService.fetchJobsForCompany(companyName);
+          
+          if (atsResult.success && atsResult.jobs.length > 0) {
+            allJobs.push(...atsResult.jobs);
+            sources.push(...atsResult.sources.map(s => `${s} (Free ATS)`));
+            console.log(`✅ ATS Free Fallback: Found ${atsResult.jobs.length} jobs`);
+          }
+        } catch (atsError) {
+          console.warn('ATS fallback failed:', atsError);
+          errors.push('ATS Fallback: Failed to load');
+        }
+      }
+
+      // 3. If STILL no jobs, try Comprehensive Apify (uses free $5 credits)
+      if (allJobs.length === 0) {
+        try {
+          const apifyResult = await ApifyJobService.quickApifySearch(companyName);
+          
+          if (apifyResult.success && apifyResult.jobs.length > 0) {
+            allJobs.push(...apifyResult.jobs);
+            sources.push(...apifyResult.sources.map(s => `${s} (Free Apify)`));
+            console.log(`✅ Comprehensive Apify (Free): Found ${apifyResult.jobs.length} jobs`);
+          }
+        } catch (apifyError) {
+          console.warn('Comprehensive Apify failed:', apifyError);
+          errors.push('Comprehensive Apify: Failed to load');
+        }
       }
     }
 
