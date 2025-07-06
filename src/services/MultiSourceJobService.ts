@@ -305,6 +305,48 @@ export class MultiSourceJobService {
     const sources: string[] = [];
     const errors: string[] = [];
 
+    // For known companies where APIs often fail, try free methods FIRST
+    const knownCompanies = ['netflix', 'google', 'apple', 'microsoft', 'meta', 'amazon', 'tesla'];
+    const isKnownCompany = knownCompanies.some(known => 
+      companyName.toLowerCase().includes(known)
+    );
+
+    if (isKnownCompany) {
+      console.log(`🎯 Known major company detected: ${companyName} - trying free methods first`);
+      
+      // Try free methods immediately for known companies
+      try {
+        const { CreativeJobSearchService } = await import('./CreativeJobSearchService');
+        const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
+          includeRSS: true,
+          includeFreeAPIs: true,
+          includeSocialMedia: true
+        });
+        
+        if (creativeResult.success && creativeResult.jobs.length > 0) {
+          allJobs.push(...creativeResult.jobs);
+          sources.push(...creativeResult.sources.map(s => `${s} (Free)`));
+          console.log(`✅ Creative Free Methods (Priority): Found ${creativeResult.jobs.length} jobs`);
+        }
+      } catch (creativeError) {
+        console.warn('Creative free methods failed:', creativeError);
+      }
+
+      // Also try ATS for known companies
+      try {
+        const { ATSService } = await import('./ATSService');
+        const atsResult = await ATSService.fetchJobsForCompany(companyName);
+        
+        if (atsResult.success && atsResult.jobs.length > 0) {
+          allJobs.push(...atsResult.jobs);
+          sources.push(...atsResult.sources.map(s => `${s} (Free ATS)`));
+          console.log(`✅ ATS Free Methods (Priority): Found ${atsResult.jobs.length} jobs`);
+        }
+      } catch (atsError) {
+        console.warn('ATS methods failed:', atsError);
+      }
+    }
+
     // Start all searches simultaneously but don't wait for all
     const searchPromises = [
       { name: 'Google Jobs', promise: this.callEdgeFunctionWithTimeout('search-google-jobs', { companyName }, 5000) },
@@ -389,7 +431,7 @@ export class MultiSourceJobService {
       }
     }
 
-    // Remove duplicates
+    // Remove duplicates and filter out generic results
     const uniqueJobs = this.removeDuplicateJobs(allJobs);
 
     return {
