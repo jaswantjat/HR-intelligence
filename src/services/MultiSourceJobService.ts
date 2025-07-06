@@ -1,3 +1,5 @@
+import { ApifyJobService } from './ApifyJobService';
+
 interface JobResult {
   title: string;
   count: string;
@@ -34,6 +36,11 @@ export class MultiSourceJobService {
     this.config = { ...this.config, ...config };
     // Store in localStorage for persistence
     localStorage.setItem('job_search_api_config', JSON.stringify(this.config));
+    
+    // Also configure ApifyJobService if token is provided
+    if (config.apifyToken) {
+      ApifyJobService.setAPIKey(config.apifyToken);
+    }
   }
 
   // Load API keys from localStorage
@@ -315,13 +322,84 @@ export class MultiSourceJobService {
     };
   }
 
-  // Get available API status
+  // Apify-only comprehensive job search (alternative to edge functions)
+  public static async searchWithApifyOnly(companyName: string, searchType: 'quick' | 'deep' = 'quick'): Promise<SearchResult> {
+    console.log(`Apify-only job search (${searchType}) for: ${companyName}`);
+    
+    // Ensure ApifyJobService has the token
+    this.loadAPIKeys();
+    if (this.config.apifyToken && !ApifyJobService.loadAPIKey()) {
+      ApifyJobService.setAPIKey(this.config.apifyToken);
+    }
+
+    if (searchType === 'quick') {
+      return await ApifyJobService.quickApifySearch(companyName);
+    } else {
+      return await ApifyJobService.deepApifySearch(companyName);
+    }
+  }
+
+  // Hybrid search combining edge functions and comprehensive Apify
+  public static async searchHybrid(companyName: string): Promise<SearchResult> {
+    console.log(`Hybrid job search for: ${companyName}`);
+    
+    const allJobs: JobResult[] = [];
+    const sources: string[] = [];
+    const errors: string[] = [];
+
+    // Run both approaches in parallel
+    const [edgeFunctionResults, apifyResults] = await Promise.allSettled([
+      this.searchAllSources(companyName),
+      this.searchWithApifyOnly(companyName, 'quick')
+    ]);
+
+    // Combine results from edge functions
+    if (edgeFunctionResults.status === 'fulfilled') {
+      const result = edgeFunctionResults.value;
+      allJobs.push(...result.jobs);
+      sources.push(...result.sources);
+      if (result.errors) errors.push(...result.errors);
+    } else {
+      errors.push(`Edge functions: ${edgeFunctionResults.reason?.message || 'Failed'}`);
+    }
+
+    // Combine results from comprehensive Apify
+    if (apifyResults.status === 'fulfilled') {
+      const result = apifyResults.value;
+      allJobs.push(...result.jobs);
+      sources.push(...result.sources.map(s => `${s} (Comprehensive)`));
+      if (result.errors) errors.push(...result.errors);
+    } else {
+      errors.push(`Apify comprehensive: ${apifyResults.reason?.message || 'Failed'}`);
+    }
+
+    // Remove duplicates
+    const uniqueJobs = this.removeDuplicateJobs(allJobs);
+
+    return {
+      success: uniqueJobs.length > 0,
+      jobs: uniqueJobs,
+      sources,
+      totalFound: uniqueJobs.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  // Get available API status including comprehensive Apify methods
   public static getAPIStatus(): { [key: string]: boolean } {
     this.loadAPIKeys();
-    return {
+    const edgeFunctionStatus = {
       'Google Jobs (SerpApi)': !!this.config.serpApiKey,
       'Career Pages (Diffbot)': !!this.config.diffbotToken,
       'LinkedIn (Apify)': !!this.config.apifyToken,
+    };
+
+    const apifyStatus = ApifyJobService.getApifyStatus();
+    
+    return {
+      ...edgeFunctionStatus,
+      '--- Comprehensive Apify ---': false, // Separator
+      ...apifyStatus,
     };
   }
 }
