@@ -1,0 +1,327 @@
+interface JobResult {
+  title: string;
+  count: string;
+  location: string;
+  sourceUrl: string;
+  salary?: string;
+  datePosted?: string;
+  jobType?: string;
+  company: string;
+  atsSource: string;
+  description?: string;
+  skills?: string[];
+}
+
+interface APIConfig {
+  serpApiKey?: string;
+  diffbotToken?: string;
+  apifyToken?: string;
+}
+
+interface SearchResult {
+  success: boolean;
+  jobs: JobResult[];
+  sources: string[];
+  totalFound: number;
+  errors?: string[];
+}
+
+export class MultiSourceJobService {
+  private static config: APIConfig = {};
+
+  // Store API keys
+  static setAPIKeys(config: APIConfig) {
+    this.config = { ...this.config, ...config };
+    // Store in localStorage for persistence
+    localStorage.setItem('job_search_api_config', JSON.stringify(this.config));
+  }
+
+  // Load API keys from localStorage
+  static loadAPIKeys(): APIConfig {
+    try {
+      const stored = localStorage.getItem('job_search_api_config');
+      if (stored) {
+        this.config = JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn('Failed to load API config:', error);
+    }
+    return this.config;
+  }
+
+  // 1. Google Jobs via SerpApi (100 free searches/month)
+  private static async searchGoogleJobs(companyName: string): Promise<{ jobs: JobResult[], source: string }> {
+    if (!this.config.serpApiKey) {
+      return { jobs: [], source: 'Google Jobs (SerpApi)' };
+    }
+
+    try {
+      const query = `${companyName} jobs`;
+      const url = `https://serpapi.com/search.json?engine=google_jobs&q=${encodeURIComponent(query)}&api_key=${this.config.serpApiKey}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`SerpApi failed: ${response.status}`);
+      
+      const data = await response.json();
+      const jobs: JobResult[] = [];
+
+      if (data.jobs_results) {
+        data.jobs_results.slice(0, 10).forEach((job: any) => {
+          jobs.push({
+            title: job.title || 'Unknown Position',
+            count: '1',
+            location: job.location || 'Location not specified',
+            sourceUrl: job.related_links?.[0]?.link || job.apply_options?.[0]?.link || '#',
+            salary: job.detected_extensions?.salary || undefined,
+            datePosted: job.detected_extensions?.posted_at || undefined,
+            jobType: job.detected_extensions?.schedule_type || 'Full-time',
+            company: job.company_name || companyName,
+            atsSource: 'Google Jobs',
+            description: job.description?.substring(0, 200) || undefined,
+          });
+        });
+      }
+
+      return { jobs, source: 'Google Jobs (SerpApi)' };
+    } catch (error) {
+      console.error('Google Jobs search failed:', error);
+      return { jobs: [], source: 'Google Jobs (SerpApi)' };
+    }
+  }
+
+  // 2. Company Career Pages via Diffbot (10K free extractions/month)
+  private static async searchCareerPages(companyName: string): Promise<{ jobs: JobResult[], source: string }> {
+    if (!this.config.diffbotToken) {
+      return { jobs: [], source: 'Company Careers (Diffbot)' };
+    }
+
+    try {
+      // Common career page patterns
+      const careerUrls = [
+        `https://careers.${companyName.toLowerCase()}.com`,
+        `https://jobs.${companyName.toLowerCase()}.com`,
+        `https://${companyName.toLowerCase()}.com/careers`,
+        `https://${companyName.toLowerCase()}.com/jobs`,
+      ];
+
+      const jobs: JobResult[] = [];
+
+      // Try each URL with Diffbot
+      for (const url of careerUrls.slice(0, 2)) { // Limit to 2 URLs to conserve quota
+        try {
+          const diffbotUrl = `https://api.diffbot.com/v3/analyze?token=${this.config.diffbotToken}&url=${encodeURIComponent(url)}&fields=objects.title,objects.location,objects.summary,objects.skills`;
+          
+          const response = await fetch(diffbotUrl);
+          if (!response.ok) continue;
+          
+          const data = await response.json();
+          
+          if (data.objects) {
+            data.objects.slice(0, 5).forEach((job: any) => {
+              if (job.title) {
+                jobs.push({
+                  title: job.title,
+                  count: '1',
+                  location: job.location || 'Location not specified',
+                  sourceUrl: url,
+                  company: companyName,
+                  atsSource: 'Company Career Page',
+                  description: job.summary?.substring(0, 200) || undefined,
+                  skills: job.skills || undefined,
+                });
+              }
+            });
+          }
+          
+          if (jobs.length > 0) break; // Found jobs, no need to try more URLs
+        } catch (error) {
+          console.warn(`Diffbot failed for ${url}:`, error);
+        }
+      }
+
+      return { jobs, source: 'Company Careers (Diffbot)' };
+    } catch (error) {
+      console.error('Diffbot career search failed:', error);
+      return { jobs: [], source: 'Company Careers (Diffbot)' };
+    }
+  }
+
+  // 3. LinkedIn Jobs via Apify Actor
+  private static async searchLinkedInJobs(companyName: string): Promise<{ jobs: JobResult[], source: string }> {
+    if (!this.config.apifyToken) {
+      return { jobs: [], source: 'LinkedIn Jobs (Apify)' };
+    }
+
+    try {
+      // Use Apify's LinkedIn Jobs actor
+      const actorId = 'apify/linkedin-jobs-scraper';
+      const runInput = {
+        queries: [`${companyName} jobs`],
+        maxResults: 10,
+        country: 'US',
+      };
+
+      // Start the actor run
+      const runResponse = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${this.config.apifyToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(runInput),
+      });
+
+      if (!runResponse.ok) throw new Error(`Apify run failed: ${runResponse.status}`);
+      
+      const runData = await runResponse.json();
+      const runId = runData.data.id;
+
+      // Wait for completion (simplified - in production, use webhooks)
+      await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second wait
+
+      // Get results
+      const resultsResponse = await fetch(`https://api.apify.com/v2/datasets/${runData.data.defaultDatasetId}/items?token=${this.config.apifyToken}`);
+      if (!resultsResponse.ok) throw new Error(`Failed to get results: ${resultsResponse.status}`);
+      
+      const results = await resultsResponse.json();
+      const jobs: JobResult[] = [];
+
+      results.slice(0, 10).forEach((job: any) => {
+        if (job.title) {
+          jobs.push({
+            title: job.title,
+            count: '1',
+            location: job.location || 'Location not specified',
+            sourceUrl: job.url || '#',
+            salary: job.salary || undefined,
+            datePosted: job.postedTime || undefined,
+            jobType: job.workplace || 'Full-time',
+            company: job.company || companyName,
+            atsSource: 'LinkedIn',
+            description: job.description?.substring(0, 200) || undefined,
+          });
+        }
+      });
+
+      return { jobs, source: 'LinkedIn Jobs (Apify)' };
+    } catch (error) {
+      console.error('LinkedIn search failed:', error);
+      return { jobs: [], source: 'LinkedIn Jobs (Apify)' };
+    }
+  }
+
+  // Mock job board data for demo (since direct API calls have CORS issues)
+  private static async getMockJobBoardData(companyName: string): Promise<{ jobs: JobResult[], source: string }> {
+    // Return some sample data for demonstration
+    const sampleJobs: JobResult[] = [
+      {
+        title: `Software Engineer at ${companyName}`,
+        count: '1',
+        location: 'San Francisco, CA',
+        sourceUrl: `https://${companyName.toLowerCase().replace(/\s+/g, '')}.com/careers`,
+        company: companyName,
+        atsSource: 'Company Careers',
+        description: 'Sample job posting for demonstration',
+        salary: '$100,000 - $150,000',
+        jobType: 'Full-time'
+      }
+    ];
+
+    return { jobs: sampleJobs, source: 'Demo Data' };
+  }
+
+  // Remove duplicate jobs based on title and location similarity
+  private static removeDuplicateJobs(jobs: JobResult[]): JobResult[] {
+    const seen = new Set<string>();
+    return jobs.filter(job => {
+      const key = `${job.title.toLowerCase().trim()}-${job.location.toLowerCase().trim()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  // Call edge function with timeout
+  private static async callEdgeFunctionWithTimeout(functionName: string, payload: any, timeout: number = 3000): Promise<{ jobs: JobResult[], source: string }> {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      console.log(`🔍 Calling edge function: ${functionName} with payload:`, payload);
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), timeout);
+      });
+
+      const apiPromise = supabase.functions.invoke(functionName, {
+        body: payload
+      });
+
+      const { data, error } = await Promise.race([apiPromise, timeoutPromise]);
+
+      if (error) {
+        console.error(`❌ Edge function ${functionName} error:`, error);
+        throw error;
+      }
+
+      console.log(`✅ Edge function ${functionName} response:`, data);
+      return data || { jobs: [], source: 'Unknown' };
+    } catch (error) {
+      console.error(`🚨 Edge function ${functionName} failed:`, error);
+      return { jobs: [], source: 'Unknown' };
+    }
+  }
+
+  // Main search method that shows results progressively
+  public static async searchAllSources(companyName: string): Promise<SearchResult> {
+    console.log(`Multi-source job search for: ${companyName}`);
+    
+    const allJobs: JobResult[] = [];
+    const sources: string[] = [];
+    const errors: string[] = [];
+
+    // Start all searches simultaneously but don't wait for all
+    const searchPromises = [
+      { name: 'Google Jobs', promise: this.callEdgeFunctionWithTimeout('search-google-jobs', { companyName }, 5000) },
+      { name: 'Career Pages', promise: this.callEdgeFunctionWithTimeout('search-career-pages', { companyName }, 8000) },
+      { name: 'LinkedIn Jobs', promise: this.callEdgeFunctionWithTimeout('search-linkedin-jobs', { companyName }, 10000) },
+    ];
+
+    // Process results as they come in
+    const results = await Promise.allSettled(searchPromises.map(p => p.promise));
+    
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const { jobs, source } = result.value;
+        if (jobs.length > 0) {
+          allJobs.push(...jobs);
+          sources.push(source);
+          console.log(`✓ ${searchPromises[index].name}: Found ${jobs.length} jobs`);
+        } else {
+          console.log(`○ ${searchPromises[index].name}: No jobs found`);
+        }
+      } else {
+        const errorMsg = `${searchPromises[index].name}: ${result.reason?.message || 'Failed'}`;
+        errors.push(errorMsg);
+        console.log(`✗ ${errorMsg}`);
+      }
+    });
+
+    // Remove duplicates
+    const uniqueJobs = this.removeDuplicateJobs(allJobs);
+
+    return {
+      success: uniqueJobs.length > 0,
+      jobs: uniqueJobs,
+      sources,
+      totalFound: uniqueJobs.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  // Get available API status
+  public static getAPIStatus(): { [key: string]: boolean } {
+    this.loadAPIKeys();
+    return {
+      'Google Jobs (SerpApi)': !!this.config.serpApiKey,
+      'Career Pages (Diffbot)': !!this.config.diffbotToken,
+      'LinkedIn (Apify)': !!this.config.apifyToken,
+    };
+  }
+}
