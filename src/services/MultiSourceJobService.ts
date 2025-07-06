@@ -234,10 +234,32 @@ export class MultiSourceJobService {
     return { jobs: sampleJobs, source: 'Demo Data' };
   }
 
-  // Remove duplicate jobs based on title and location similarity
+  // Remove duplicate jobs and filter out generic career page results
   private static removeDuplicateJobs(jobs: JobResult[]): JobResult[] {
     const seen = new Set<string>();
-    return jobs.filter(job => {
+    
+    // Filter out generic career page suggestions
+    const filteredJobs = jobs.filter(job => {
+      const title = job.title.toLowerCase();
+      const isGeneric = 
+        title.includes('join us') ||
+        title.includes('careers at') ||
+        title.includes('various open positions') ||
+        title.includes('check career page') ||
+        title.includes('career opportunity') ||
+        title.includes('multiple positions') ||
+        title === 'position available' ||
+        title === 'job opening' ||
+        title === 'untitled position' ||
+        job.count === 'multiple' ||
+        job.count === 'various' ||
+        job.count === 'unknown';
+      
+      return !isGeneric;
+    });
+    
+    // Remove duplicates from the filtered results
+    return filteredJobs.filter(job => {
       const key = `${job.title.toLowerCase().trim()}-${job.location.toLowerCase().trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
