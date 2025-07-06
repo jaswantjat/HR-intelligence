@@ -310,6 +310,25 @@ export class MultiSourceJobService {
       }
     });
 
+    // If no jobs found from edge functions, try ATS fallback
+    if (allJobs.length === 0) {
+      console.log('🔄 No jobs from APIs, trying ATS fallback...');
+      
+      try {
+        const { ATSService } = await import('./ATSService');
+        const atsResult = await ATSService.fetchJobsForCompany(companyName);
+        
+        if (atsResult.success && atsResult.jobs.length > 0) {
+          allJobs.push(...atsResult.jobs);
+          sources.push(...atsResult.sources);
+          console.log(`✅ ATS Fallback: Found ${atsResult.jobs.length} jobs`);
+        }
+      } catch (atsError) {
+        console.warn('ATS fallback failed:', atsError);
+        errors.push('ATS Fallback: Failed to load');
+      }
+    }
+
     // Remove duplicates
     const uniqueJobs = this.removeDuplicateJobs(allJobs);
 

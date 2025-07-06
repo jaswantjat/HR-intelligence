@@ -35,11 +35,11 @@ serve(async (req) => {
       });
     }
 
-    // Use working LinkedIn job scrapers
+    // Use working LinkedIn job scrapers - updated actor IDs
     const linkedinActors = [
-      'misceres/linkedin-jobs-search',
-      'trudax/linkedin-job-scraper', 
-      'voyager/linkedin-jobs-scraper'
+      'bebity/linkedin-jobs-scraper',
+      'curious_coder/linkedin-scraper',
+      'apify/linkedin-jobs-scraper'
     ];
 
     const jobs: any[] = [];
