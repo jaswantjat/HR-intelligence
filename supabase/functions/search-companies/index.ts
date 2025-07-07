@@ -23,249 +23,239 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json();
-    const serpApiKey = Deno.env.get('SERPAPI_KEY');
+    
+    console.log('🔍 Company search request:', query);
 
-    if (!serpApiKey) {
-      return new Response(JSON.stringify({ error: 'SerpApi key not configured' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Comprehensive company database
+    const allCompanies: CompanySuggestion[] = [
+      // FAANG + Big Tech
+      { name: 'Google', domain: 'google.com', industry: 'Technology', size: 'Large' },
+      { name: 'Microsoft', domain: 'microsoft.com', industry: 'Technology', size: 'Large' },
+      { name: 'Apple', domain: 'apple.com', industry: 'Technology', size: 'Large' },
+      { name: 'Amazon', domain: 'amazon.com', industry: 'E-commerce', size: 'Large' },
+      { name: 'Meta', domain: 'meta.com', industry: 'Social Media', size: 'Large' },
+      { name: 'Netflix', domain: 'netflix.com', industry: 'Entertainment', size: 'Large' },
+      { name: 'Tesla', domain: 'tesla.com', industry: 'Automotive', size: 'Large' },
+      { name: 'Nvidia', domain: 'nvidia.com', industry: 'Technology', size: 'Large' },
+      { name: 'Intel', domain: 'intel.com', industry: 'Technology', size: 'Large' },
+      { name: 'IBM', domain: 'ibm.com', industry: 'Technology', size: 'Large' },
+      { name: 'Oracle', domain: 'oracle.com', industry: 'Technology', size: 'Large' },
+      { name: 'Salesforce', domain: 'salesforce.com', industry: 'Software', size: 'Large' },
+      { name: 'Adobe', domain: 'adobe.com', industry: 'Software', size: 'Large' },
+      
+      // Fintech & Finance
+      { name: 'Stripe', domain: 'stripe.com', industry: 'Fintech', size: 'Large' },
+      { name: 'Square', domain: 'squareup.com', industry: 'Fintech', size: 'Large' },
+      { name: 'PayPal', domain: 'paypal.com', industry: 'Fintech', size: 'Large' },
+      { name: 'Coinbase', domain: 'coinbase.com', industry: 'Fintech', size: 'Medium' },
+      { name: 'Robinhood', domain: 'robinhood.com', industry: 'Fintech', size: 'Medium' },
+      { name: 'Plaid', domain: 'plaid.com', industry: 'Fintech', size: 'Medium' },
+      { name: 'Chime', domain: 'chime.com', industry: 'Fintech', size: 'Medium' },
+      { name: 'Affirm', domain: 'affirm.com', industry: 'Fintech', size: 'Medium' },
+      { name: 'Klarna', domain: 'klarna.com', industry: 'Fintech', size: 'Medium' },
+      
+      // AI & ML Companies
+      { name: 'OpenAI', domain: 'openai.com', industry: 'AI', size: 'Medium' },
+      { name: 'Anthropic', domain: 'anthropic.com', industry: 'AI', size: 'Medium' },
+      { name: 'Stability AI', domain: 'stability.ai', industry: 'AI', size: 'Small' },
+      { name: 'Cohere', domain: 'cohere.com', industry: 'AI', size: 'Small' },
+      { name: 'Hugging Face', domain: 'huggingface.co', industry: 'AI', size: 'Small' },
+      { name: 'Scale AI', domain: 'scale.com', industry: 'AI', size: 'Medium' },
+      { name: 'DataBricks', domain: 'databricks.com', industry: 'AI', size: 'Large' },
+      { name: 'Weights & Biases', domain: 'wandb.ai', industry: 'AI', size: 'Small' },
+      { name: 'Replicate', domain: 'replicate.com', industry: 'AI', size: 'Small' },
+      
+      // Startups & Unicorns
+      { name: 'Notion', domain: 'notion.so', industry: 'Productivity', size: 'Medium' },
+      { name: 'Figma', domain: 'figma.com', industry: 'Design', size: 'Medium' },
+      { name: 'Linear', domain: 'linear.app', industry: 'Project Management', size: 'Small' },
+      { name: 'Vercel', domain: 'vercel.com', industry: 'Developer Tools', size: 'Small' },
+      { name: 'Supabase', domain: 'supabase.com', industry: 'Database', size: 'Small' },
+      { name: 'Airtable', domain: 'airtable.com', industry: 'Database', size: 'Medium' },
+      { name: 'Webflow', domain: 'webflow.com', industry: 'Design', size: 'Medium' },
+      { name: 'Framer', domain: 'framer.com', industry: 'Design', size: 'Small' },
+      { name: 'Canva', domain: 'canva.com', industry: 'Design', size: 'Large' },
+      { name: 'Miro', domain: 'miro.com', industry: 'Collaboration', size: 'Medium' },
+      { name: 'Loom', domain: 'loom.com', industry: 'Communication', size: 'Small' },
+      { name: 'Calendly', domain: 'calendly.com', industry: 'Productivity', size: 'Small' },
+      { name: 'Typeform', domain: 'typeform.com', industry: 'Productivity', size: 'Small' },
+      
+      // SaaS & Enterprise
+      { name: 'Slack', domain: 'slack.com', industry: 'Communication', size: 'Large' },
+      { name: 'Zoom', domain: 'zoom.us', industry: 'Communication', size: 'Large' },
+      { name: 'Dropbox', domain: 'dropbox.com', industry: 'Storage', size: 'Large' },
+      { name: 'Box', domain: 'box.com', industry: 'Storage', size: 'Large' },
+      { name: 'Atlassian', domain: 'atlassian.com', industry: 'Software', size: 'Large' },
+      { name: 'Jira', domain: 'atlassian.com', industry: 'Project Management', size: 'Large' },
+      { name: 'Confluence', domain: 'atlassian.com', industry: 'Collaboration', size: 'Large' },
+      { name: 'Asana', domain: 'asana.com', industry: 'Project Management', size: 'Medium' },
+      { name: 'Monday.com', domain: 'monday.com', industry: 'Project Management', size: 'Medium' },
+      { name: 'Trello', domain: 'trello.com', industry: 'Project Management', size: 'Medium' },
+      
+      // Cloud & Infrastructure
+      { name: 'AWS', domain: 'aws.amazon.com', industry: 'Cloud', size: 'Large' },
+      { name: 'Google Cloud', domain: 'cloud.google.com', industry: 'Cloud', size: 'Large' },
+      { name: 'Azure', domain: 'azure.microsoft.com', industry: 'Cloud', size: 'Large' },
+      { name: 'DigitalOcean', domain: 'digitalocean.com', industry: 'Cloud', size: 'Medium' },
+      { name: 'Linode', domain: 'linode.com', industry: 'Cloud', size: 'Medium' },
+      { name: 'Heroku', domain: 'heroku.com', industry: 'Cloud', size: 'Medium' },
+      { name: 'Cloudflare', domain: 'cloudflare.com', industry: 'Cloud', size: 'Large' },
+      { name: 'Fastly', domain: 'fastly.com', industry: 'Cloud', size: 'Medium' },
+      { name: 'MongoDB', domain: 'mongodb.com', industry: 'Database', size: 'Large' },
+      { name: 'Redis', domain: 'redis.com', industry: 'Database', size: 'Medium' },
+      { name: 'Snowflake', domain: 'snowflake.com', industry: 'Database', size: 'Large' },
+      
+      // E-commerce & Retail
+      { name: 'Shopify', domain: 'shopify.com', industry: 'E-commerce', size: 'Large' },
+      { name: 'Etsy', domain: 'etsy.com', industry: 'E-commerce', size: 'Large' },
+      { name: 'eBay', domain: 'ebay.com', industry: 'E-commerce', size: 'Large' },
+      { name: 'Walmart', domain: 'walmart.com', industry: 'Retail', size: 'Large' },
+      { name: 'Target', domain: 'target.com', industry: 'Retail', size: 'Large' },
+      { name: 'Best Buy', domain: 'bestbuy.com', industry: 'Retail', size: 'Large' },
+      
+      // Social Media & Content
+      { name: 'Twitter', domain: 'twitter.com', industry: 'Social Media', size: 'Large' },
+      { name: 'LinkedIn', domain: 'linkedin.com', industry: 'Social Media', size: 'Large' },
+      { name: 'Instagram', domain: 'instagram.com', industry: 'Social Media', size: 'Large' },
+      { name: 'TikTok', domain: 'tiktok.com', industry: 'Social Media', size: 'Large' },
+      { name: 'YouTube', domain: 'youtube.com', industry: 'Entertainment', size: 'Large' },
+      { name: 'Twitch', domain: 'twitch.tv', industry: 'Entertainment', size: 'Large' },
+      { name: 'Discord', domain: 'discord.com', industry: 'Communication', size: 'Large' },
+      { name: 'Reddit', domain: 'reddit.com', industry: 'Social Media', size: 'Large' },
+      { name: 'Pinterest', domain: 'pinterest.com', industry: 'Social Media', size: 'Large' },
+      { name: 'Snapchat', domain: 'snapchat.com', industry: 'Social Media', size: 'Large' },
+      
+      // Gaming
+      { name: 'Epic Games', domain: 'epicgames.com', industry: 'Gaming', size: 'Large' },
+      { name: 'Valve', domain: 'valvesoftware.com', industry: 'Gaming', size: 'Medium' },
+      { name: 'Riot Games', domain: 'riotgames.com', industry: 'Gaming', size: 'Large' },
+      { name: 'Blizzard', domain: 'blizzard.com', industry: 'Gaming', size: 'Large' },
+      { name: 'Electronic Arts', domain: 'ea.com', industry: 'Gaming', size: 'Large' },
+      { name: 'Ubisoft', domain: 'ubisoft.com', industry: 'Gaming', size: 'Large' },
+      { name: 'Unity', domain: 'unity.com', industry: 'Gaming', size: 'Large' },
+      
+      // Consulting & Services
+      { name: 'McKinsey', domain: 'mckinsey.com', industry: 'Consulting', size: 'Large' },
+      { name: 'BCG', domain: 'bcg.com', industry: 'Consulting', size: 'Large' },
+      { name: 'Bain', domain: 'bain.com', industry: 'Consulting', size: 'Large' },
+      { name: 'Deloitte', domain: 'deloitte.com', industry: 'Consulting', size: 'Large' },
+      { name: 'PwC', domain: 'pwc.com', industry: 'Consulting', size: 'Large' },
+      { name: 'EY', domain: 'ey.com', industry: 'Consulting', size: 'Large' },
+      { name: 'KPMG', domain: 'kpmg.com', industry: 'Consulting', size: 'Large' },
+      { name: 'Accenture', domain: 'accenture.com', industry: 'Consulting', size: 'Large' },
+      
+      // Transportation & Logistics
+      { name: 'Uber', domain: 'uber.com', industry: 'Transportation', size: 'Large' },
+      { name: 'Lyft', domain: 'lyft.com', industry: 'Transportation', size: 'Large' },
+      { name: 'DoorDash', domain: 'doordash.com', industry: 'Food Delivery', size: 'Large' },
+      { name: 'Instacart', domain: 'instacart.com', industry: 'Food Delivery', size: 'Large' },
+      { name: 'Grubhub', domain: 'grubhub.com', industry: 'Food Delivery', size: 'Large' },
+      { name: 'UberEats', domain: 'ubereats.com', industry: 'Food Delivery', size: 'Large' },
+      { name: 'FedEx', domain: 'fedex.com', industry: 'Logistics', size: 'Large' },
+      { name: 'UPS', domain: 'ups.com', industry: 'Logistics', size: 'Large' },
+      
+      // Healthcare & Biotech
+      { name: 'Moderna', domain: 'modernatx.com', industry: 'Biotech', size: 'Large' },
+      { name: 'Pfizer', domain: 'pfizer.com', industry: 'Pharmaceutical', size: 'Large' },
+      { name: 'Johnson & Johnson', domain: 'jnj.com', industry: 'Healthcare', size: 'Large' },
+      { name: 'Teladoc', domain: 'teladoc.com', industry: 'Healthcare', size: 'Large' },
+      { name: '23andMe', domain: '23andme.com', industry: 'Biotech', size: 'Medium' },
+      
+      // Smaller Tech Companies & Startups
+      { name: 'Intercom', domain: 'intercom.com', industry: 'Customer Support', size: 'Medium' },
+      { name: 'Zendesk', domain: 'zendesk.com', industry: 'Customer Support', size: 'Large' },
+      { name: 'Freshworks', domain: 'freshworks.com', industry: 'Customer Support', size: 'Medium' },
+      { name: 'HubSpot', domain: 'hubspot.com', industry: 'Marketing', size: 'Large' },
+      { name: 'Mailchimp', domain: 'mailchimp.com', industry: 'Marketing', size: 'Medium' },
+      { name: 'SendGrid', domain: 'sendgrid.com', industry: 'Email', size: 'Medium' },
+      { name: 'Twilio', domain: 'twilio.com', industry: 'Communication', size: 'Large' },
+      { name: 'Auth0', domain: 'auth0.com', industry: 'Security', size: 'Medium' },
+      { name: 'Okta', domain: 'okta.com', industry: 'Security', size: 'Large' },
+      { name: 'CrowdStrike', domain: 'crowdstrike.com', industry: 'Security', size: 'Large' },
+      { name: 'Splunk', domain: 'splunk.com', industry: 'Analytics', size: 'Large' },
+      { name: 'Datadog', domain: 'datadoghq.com', industry: 'Monitoring', size: 'Large' },
+      { name: 'New Relic', domain: 'newrelic.com', industry: 'Monitoring', size: 'Medium' },
+      { name: 'PagerDuty', domain: 'pagerduty.com', industry: 'Monitoring', size: 'Medium' },
+      { name: 'Segment', domain: 'segment.com', industry: 'Analytics', size: 'Medium' },
+      { name: 'Mixpanel', domain: 'mixpanel.com', industry: 'Analytics', size: 'Medium' },
+      { name: 'Amplitude', domain: 'amplitude.com', industry: 'Analytics', size: 'Medium' },
+      { name: 'Looker', domain: 'looker.com', industry: 'Analytics', size: 'Medium' },
+      { name: 'Tableau', domain: 'tableau.com', industry: 'Analytics', size: 'Large' },
+      { name: 'Palantir', domain: 'palantir.com', industry: 'Analytics', size: 'Large' },
+    ];
 
     if (!query || query.length < 1) {
-      // Enhanced popular companies including startups and smaller companies
-      const popularCompanies: CompanySuggestion[] = [
-        { name: 'Google', domain: 'google.com', industry: 'Technology' },
-        { name: 'Microsoft', domain: 'microsoft.com', industry: 'Technology' },
-        { name: 'Apple', domain: 'apple.com', industry: 'Technology' },
-        { name: 'Amazon', domain: 'amazon.com', industry: 'E-commerce' },
-        { name: 'Meta', domain: 'meta.com', industry: 'Social Media' },
-        { name: 'Stripe', domain: 'stripe.com', industry: 'Fintech' },
-        { name: 'Notion', domain: 'notion.so', industry: 'Productivity' },
-        { name: 'Figma', domain: 'figma.com', industry: 'Design' },
-        { name: 'Linear', domain: 'linear.app', industry: 'Project Management' },
-        { name: 'Vercel', domain: 'vercel.com', industry: 'Developer Tools' },
-        { name: 'Supabase', domain: 'supabase.com', industry: 'Database' },
-        { name: 'Anthropic', domain: 'anthropic.com', industry: 'AI' },
-      ];
+      // Return popular companies when no query
+      const popularCompanies = allCompanies
+        .filter(company => company.size === 'Large' || ['Stripe', 'Notion', 'Figma', 'Linear', 'Vercel', 'Supabase', 'Anthropic', 'OpenAI'].includes(company.name))
+        .slice(0, 12);
+      
+      console.log(`✅ Returning ${popularCompanies.length} popular companies`);
       return new Response(JSON.stringify({ suggestions: popularCompanies }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('Searching for companies matching:', query);
-
-    // Enhanced search query for better startup/small company results
-    const searchQueries = [
-      `${query} company site:linkedin.com OR site:crunchbase.com`,
-      `${query} startup site:linkedin.com OR site:crunchbase.com`,
-      `"${query}" company careers jobs`,
-    ];
-
+    // Smart search function with multiple matching strategies
+    const queryLower = query.toLowerCase().trim();
     const suggestions: CompanySuggestion[] = [];
     const seenCompanies = new Set<string>();
 
-    // Try multiple search approaches
-    for (const searchQuery of searchQueries) {
-      if (suggestions.length >= 8) break;
+    // 1. Exact matches (case insensitive)
+    const exactMatches = allCompanies.filter(company => 
+      company.name.toLowerCase() === queryLower
+    );
 
-      try {
-        const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(searchQuery)}&api_key=${serpApiKey}&num=15`;
-        
-        const response = await fetch(url);
-        if (!response.ok) {
-          console.warn(`SerpApi search failed for "${searchQuery}": ${response.status}`);
-          continue;
-        }
-        
-        const data = await response.json();
+    // 2. Starts with matches
+    const startsWithMatches = allCompanies.filter(company => 
+      company.name.toLowerCase().startsWith(queryLower) && 
+      company.name.toLowerCase() !== queryLower
+    );
 
-        // Extract company information from search results
-        if (data.organic_results) {
-          data.organic_results.forEach((result: any) => {
-            if (suggestions.length >= 8) return;
+    // 3. Contains matches
+    const containsMatches = allCompanies.filter(company => 
+      company.name.toLowerCase().includes(queryLower) && 
+      !company.name.toLowerCase().startsWith(queryLower)
+    );
 
-            let companyName = '';
-            let domain = '';
-            let industry = '';
-            let size = '';
+    // 4. Fuzzy matches (for typos)
+    const fuzzyMatches = allCompanies.filter(company => {
+      const companyLower = company.name.toLowerCase();
+      const distance = levenshteinDistance(queryLower, companyLower);
+      const threshold = Math.max(1, Math.floor(queryLower.length / 3));
+      return distance <= threshold && 
+             distance > 0 && 
+             !companyLower.includes(queryLower) &&
+             !queryLower.includes(companyLower);
+    });
 
-            // Enhanced extraction from LinkedIn company pages
-            if (result.link?.includes('linkedin.com/company/')) {
-              // Extract company name from title
-              const titleMatch = result.title?.match(/^([^|•-]+)/);
-              if (titleMatch) {
-                companyName = titleMatch[1].trim();
-                
-                // Extract follower count as size indicator
-                const followerMatch = result.snippet?.match(/([\d,]+\.?\d*[KMB]?\+?\s*followers)/i);
-                if (followerMatch) {
-                  size = followerMatch[1];
-                }
-                
-                // Extract industry from snippet
-                const industryMatch = result.snippet?.match(/(?:Industry|Sector)[:\s]+([^•|\.;]+)/i);
-                if (industryMatch) {
-                  industry = industryMatch[1].trim();
-                } else {
-                  // Fallback industry extraction
-                  const commonIndustries = ['software', 'technology', 'fintech', 'healthcare', 'e-commerce', 'retail', 'finance', 'startup', 'saas', 'ai', 'blockchain', 'cybersecurity'];
-                  const lowerSnippet = result.snippet?.toLowerCase() || '';
-                  for (const ind of commonIndustries) {
-                    if (lowerSnippet.includes(ind)) {
-                      industry = ind.charAt(0).toUpperCase() + ind.slice(1);
-                      break;
-                    }
-                  }
-                }
+    // 5. Domain matches (e.g., "google.com" -> "Google")
+    const domainMatches = allCompanies.filter(company => {
+      if (!company.domain) return false;
+      const domainWithoutTld = company.domain.replace(/\.(com|org|net|io|co|ai)$/, '');
+      return domainWithoutTld.toLowerCase().includes(queryLower) ||
+             queryLower.includes(domainWithoutTld.toLowerCase());
+    });
 
-                // Extract domain from company URL or guess
-                const urlMatch = result.snippet?.match(/https?:\/\/(www\.)?([^\/\s]+)/);
-                if (urlMatch) {
-                  domain = urlMatch[2];
-                } else {
-                  // Generate likely domain
-                  const cleanName = companyName.toLowerCase()
-                    .replace(/[^a-z0-9\s]/g, '')
-                    .replace(/\s+/g, '');
-                  domain = `${cleanName}.com`;
-                }
-              }
-            }
-            
-            // Enhanced extraction from Crunchbase
-            else if (result.link?.includes('crunchbase.com/organization/')) {
-              const titleMatch = result.title?.match(/^([^-|•]+)/);
-              if (titleMatch) {
-                companyName = titleMatch[1].trim().replace(' - Crunchbase', '');
-                
-                // Extract funding stage/size info
-                const fundingMatch = result.snippet?.match(/(seed|series [a-z]|pre-seed|angel|venture|startup)/i);
-                if (fundingMatch) {
-                  size = fundingMatch[1];
-                }
-                
-                // Extract industry
-                const industryPatterns = [
-                  /operates in the ([^\.]+) industry/i,
-                  /is a ([^\.]+) company/i,
-                  /(software|technology|fintech|healthcare|e-commerce|retail|finance|saas|ai|blockchain)/i
-                ];
-                
-                for (const pattern of industryPatterns) {
-                  const match = result.snippet?.match(pattern);
-                  if (match) {
-                    industry = match[1].trim();
-                    break;
-                  }
-                }
+    // Combine results in priority order
+    const allMatches = [
+      ...exactMatches,
+      ...startsWithMatches, 
+      ...containsMatches,
+      ...fuzzyMatches,
+      ...domainMatches
+    ];
 
-                // Extract or guess domain
-                const domainMatch = result.snippet?.match(/(?:website|visit|at)\s+(?:https?:\/\/)?(www\.)?([^\/\s]+)/i);
-                if (domainMatch) {
-                  domain = domainMatch[2];
-                } else {
-                  const cleanName = companyName.toLowerCase()
-                    .replace(/[^a-z0-9\s]/g, '')
-                    .replace(/\s+/g, '');
-                  domain = `${cleanName}.com`;
-                }
-              }
-            }
-
-            // General company extraction from other results
-            else if (result.title && result.snippet) {
-              const titleWords = result.title.split(/[\s\-|•]/);
-              if (titleWords.length > 0) {
-                companyName = titleWords[0].trim();
-                
-                // Check if this looks like a company
-                const companyIndicators = ['inc', 'corp', 'llc', 'ltd', 'company', 'technologies', 'solutions', 'systems', 'labs', 'group'];
-                const hasCompanyIndicator = companyIndicators.some(indicator => 
-                  result.title.toLowerCase().includes(indicator) || 
-                  result.snippet?.toLowerCase().includes(indicator)
-                );
-                
-                if (hasCompanyIndicator || result.snippet?.toLowerCase().includes('careers') || result.snippet?.toLowerCase().includes('jobs')) {
-                  // Extract domain from display link
-                  if (result.displayed_link) {
-                    domain = result.displayed_link.split('/')[0];
-                  }
-                  
-                  // Guess industry
-                  const techKeywords = ['software', 'app', 'platform', 'digital', 'cloud', 'data', 'ai', 'tech'];
-                  if (techKeywords.some(keyword => result.snippet?.toLowerCase().includes(keyword))) {
-                    industry = 'Technology';
-                  }
-                }
-              }
-            }
-
-            // Clean up and validate company name
-            if (companyName && companyName.length > 1) {
-              companyName = companyName
-                .replace(/\s*-\s*(Crunchbase|LinkedIn|Careers|Jobs).*$/i, '')
-                .replace(/\s*(Inc|LLC|Ltd|Corp|Corporation|Company)\.?$/i, '')
-                .replace(/[^\w\s&.-]/g, '')
-                .trim();
-
-              // More permissive validation for small companies
-              const normalizedName = companyName.toLowerCase();
-              if (normalizedName.length >= 2 && 
-                  !seenCompanies.has(normalizedName) &&
-                  !normalizedName.match(/^(the|and|or|for|with|from|about)$/)) {
-                
-                seenCompanies.add(normalizedName);
-                suggestions.push({
-                  name: companyName,
-                  domain: domain || undefined,
-                  industry: industry || undefined,
-                  size: size || undefined,
-                });
-              }
-            }
-          });
-        }
-      } catch (error) {
-        console.warn(`Search query "${searchQuery}" failed:`, error);
+    // Remove duplicates and limit results
+    allMatches.forEach(company => {
+      const key = company.name.toLowerCase();
+      if (!seenCompanies.has(key) && suggestions.length < 8) {
+        seenCompanies.add(key);
+        suggestions.push(company);
       }
-    }
+    });
 
-    // Enhanced fallback with startup-focused suggestions
-    if (suggestions.length < 3) {
-      const startupCompanies = [
-        'Anthropic', 'OpenAI', 'Notion', 'Figma', 'Linear', 'Vercel', 'Supabase',
-        'Replicate', 'Hugging Face', 'Stability AI', 'Cohere', 'Pinecone',
-        'LangChain', 'Weights & Biases', 'Wandb', 'Modal', 'RunPod',
-        'Scale AI', 'DataBricks', 'Snowflake', 'MongoDB', 'Airtable',
-        'Webflow', 'Framer', 'Canva', 'Miro', 'Loom', 'Calendly',
-        'Typeform', 'Intercom', 'Zendesk', 'Freshworks', 'HubSpot'
-      ];
-
-      const queryLower = query.toLowerCase();
-      const fuzzyMatches = startupCompanies
-        .filter(company => {
-          const companyLower = company.toLowerCase();
-          return companyLower.includes(queryLower) || 
-                 queryLower.includes(companyLower) ||
-                 levenshteinDistance(queryLower, companyLower) <= Math.max(2, Math.floor(queryLower.length / 3));
-        })
-        .slice(0, 8 - suggestions.length);
-
-      fuzzyMatches.forEach(company => {
-        const normalizedName = company.toLowerCase();
-        if (!seenCompanies.has(normalizedName)) {
-          seenCompanies.add(normalizedName);
-          suggestions.push({
-            name: company,
-            domain: `${company.toLowerCase().replace(/\s+/g, '')}.com`,
-            industry: 'Technology'
-          });
-        }
-      });
-    }
-
-    console.log(`Found ${suggestions.length} company suggestions for "${query}"`);
+    console.log(`✅ Found ${suggestions.length} company matches for "${query}"`);
 
     return new Response(JSON.stringify({ suggestions }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
