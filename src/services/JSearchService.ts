@@ -15,11 +15,33 @@ interface JobResult {
 interface JSearchResponse {
   status: string;
   request_id: string;
+  parameters?: any;
   data?: any[];
   error?: {
     message: string;
     code: number;
   };
+}
+
+interface SalaryData {
+  location: string;
+  job_title: string;
+  min_salary: number;
+  max_salary: number;
+  median_salary: number;
+  min_base_salary: number;
+  max_base_salary: number;
+  median_base_salary: number;
+  min_additional_pay: number;
+  max_additional_pay: number;
+  median_additional_pay: number;
+  salary_period: string;
+  salary_currency: string;
+  salary_count: number;
+  salaries_updated_at: string;
+  publisher_name: string;
+  publisher_link: string;
+  confidence: string;
 }
 
 interface SearchResult {
@@ -145,14 +167,17 @@ export class JSearchService {
     }
   }
 
-  // Get salary estimates
-  public static async getSalaryEstimate(jobTitle: string, location: string): Promise<any> {
+  // Get salary estimates with proper typing
+  public static async getSalaryEstimate(jobTitle: string, location: string): Promise<SalaryData[]> {
     try {
       const params = new URLSearchParams({
         job_title: jobTitle,
         location: location,
-        country: 'us'
+        location_type: 'ANY',
+        years_of_experience: 'ALL'
       });
+
+      console.log(`💰 JSearch API: Getting salary estimate for ${jobTitle} in ${location}`);
 
       const response = await fetch(`${this.BASE_URL}/estimated-salary?${params}`, {
         method: 'GET',
@@ -168,10 +193,27 @@ export class JSearchService {
       }
 
       const data: JSearchResponse = await response.json();
-      return data.status === 'OK' ? data.data : null;
+      
+      if (data.status === 'OK' && data.data) {
+        console.log(`✅ JSearch API: Found salary data for ${jobTitle}`);
+        return data.data as SalaryData[];
+      }
+      
+      return [];
     } catch (error) {
-      console.error('JSearch salary estimate error:', error);
-      return null;
+      console.error('❌ JSearch salary estimate error:', error);
+      return [];
     }
+  }
+
+  // Helper method to format salary data for display
+  public static formatSalaryData(salaryData: SalaryData[]): string {
+    if (!salaryData.length) return 'Salary data not available';
+    
+    const salary = salaryData[0];
+    const currency = salary.salary_currency === 'USD' ? '$' : salary.salary_currency;
+    const period = salary.salary_period === 'YEAR' ? '/year' : `/${salary.salary_period.toLowerCase()}`;
+    
+    return `${currency}${salary.min_salary.toLocaleString()} - ${currency}${salary.max_salary.toLocaleString()} ${period} (median: ${currency}${salary.median_salary.toLocaleString()})`;
   }
 }
