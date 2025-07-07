@@ -1,4 +1,5 @@
 import { ApifyJobService } from './ApifyJobService';
+import { JSearchService } from './JSearchService';
 
 interface JobResult {
   title: string;
@@ -297,88 +298,57 @@ export class MultiSourceJobService {
     }
   }
 
-  // Main search method that shows results progressively
+  // Main search method using JSearch API as primary source
   public static async searchAllSources(companyName: string): Promise<SearchResult> {
-    console.log(`Multi-source job search for: ${companyName}`);
+    console.log(`🚀 Starting JSearch-powered job search for: ${companyName}`);
     
     const allJobs: JobResult[] = [];
     const sources: string[] = [];
     const errors: string[] = [];
 
-    // For known companies where APIs often fail, try free methods FIRST
+    // 1. PRIMARY: Try JSearch API first (Google Jobs via RapidAPI)
+    console.log('🎯 Step 1: Trying JSearch API (Primary)...');
+    try {
+      const jsearchResult = await JSearchService.searchJobs(companyName);
+      
+      if (jsearchResult.success && jsearchResult.jobs.length > 0) {
+        allJobs.push(...jsearchResult.jobs);
+        sources.push(...jsearchResult.sources);
+        console.log(`✅ JSearch API (Primary): Found ${jsearchResult.jobs.length} jobs`);
+        
+        // Remove duplicates and return early if we have good results
+        const uniqueJobs = this.removeDuplicateJobs(allJobs);
+        if (uniqueJobs.length > 0) {
+          return {
+            success: true,
+            jobs: uniqueJobs,
+            sources,
+            totalFound: uniqueJobs.length,
+          };
+        }
+      } else {
+        console.log('○ JSearch API: No jobs found, continuing to fallback methods...');
+        if (jsearchResult.errors) {
+          errors.push(...jsearchResult.errors);
+        }
+      }
+    } catch (jsearchError) {
+      console.warn('JSearch API failed:', jsearchError);
+      errors.push(`JSearch API: ${jsearchError instanceof Error ? jsearchError.message : 'Failed'}`);
+    }
+
+    console.log('🔄 Step 2: JSearch didn\'t return results, trying backup methods...');
+
+    // For known companies where APIs often fail, try free methods
     const knownCompanies = ['netflix', 'google', 'apple', 'microsoft', 'meta', 'amazon', 'tesla'];
     const isKnownCompany = knownCompanies.some(known => 
       companyName.toLowerCase().includes(known)
     );
 
     if (isKnownCompany) {
-      console.log(`🎯 Known major company detected: ${companyName} - trying free methods first`);
+      console.log(`🎯 Known major company detected: ${companyName} - trying free methods`);
       
-      // Try free methods immediately for known companies
-      try {
-        const { CreativeJobSearchService } = await import('./CreativeJobSearchService');
-        const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
-          includeRSS: true,
-          includeFreeAPIs: true,
-          includeSocialMedia: true
-        });
-        
-        if (creativeResult.success && creativeResult.jobs.length > 0) {
-          allJobs.push(...creativeResult.jobs);
-          sources.push(...creativeResult.sources.map(s => `${s} (Free)`));
-          console.log(`✅ Creative Free Methods (Priority): Found ${creativeResult.jobs.length} jobs`);
-        }
-      } catch (creativeError) {
-        console.warn('Creative free methods failed:', creativeError);
-      }
-
-      // Also try ATS for known companies
-      try {
-        const { ATSService } = await import('./ATSService');
-        const atsResult = await ATSService.fetchJobsForCompany(companyName);
-        
-        if (atsResult.success && atsResult.jobs.length > 0) {
-          allJobs.push(...atsResult.jobs);
-          sources.push(...atsResult.sources.map(s => `${s} (Free ATS)`));
-          console.log(`✅ ATS Free Methods (Priority): Found ${atsResult.jobs.length} jobs`);
-        }
-      } catch (atsError) {
-        console.warn('ATS methods failed:', atsError);
-      }
-    }
-
-    // Start all searches simultaneously but don't wait for all
-    const searchPromises = [
-      { name: 'Google Jobs', promise: this.callEdgeFunctionWithTimeout('search-google-jobs', { companyName }, 5000) },
-      { name: 'Career Pages', promise: this.callEdgeFunctionWithTimeout('search-career-pages', { companyName }, 8000) },
-      { name: 'LinkedIn Jobs', promise: this.callEdgeFunctionWithTimeout('search-linkedin-jobs', { companyName }, 10000) },
-    ];
-
-    // Process results as they come in
-    const results = await Promise.allSettled(searchPromises.map(p => p.promise));
-    
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        const { jobs, source } = result.value;
-        if (jobs.length > 0) {
-          allJobs.push(...jobs);
-          sources.push(source);
-          console.log(`✓ ${searchPromises[index].name}: Found ${jobs.length} jobs`);
-        } else {
-          console.log(`○ ${searchPromises[index].name}: No jobs found`);
-        }
-      } else {
-        const errorMsg = `${searchPromises[index].name}: ${result.reason?.message || 'Failed'}`;
-        errors.push(errorMsg);
-        console.log(`✗ ${errorMsg}`);
-      }
-    });
-
-    // If no jobs found from edge functions, try FREE methods cascade
-    if (allJobs.length === 0) {
-      console.log('🔄 No jobs from APIs, trying FREE methods cascade...');
-      
-      // 1. Try Creative Free Methods (RSS, free APIs, etc.)
+      // Try free methods for known companies
       try {
         const { CreativeJobSearchService } = await import('./CreativeJobSearchService');
         const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
@@ -394,11 +364,80 @@ export class MultiSourceJobService {
         }
       } catch (creativeError) {
         console.warn('Creative free methods failed:', creativeError);
-        errors.push('Creative Free Methods: Failed to load');
       }
 
-      // 2. If still no jobs, try ATS fallback
-      if (allJobs.length === 0) {
+      // Also try ATS for known companies
+      try {
+        const { ATSService } = await import('./ATSService');
+        const atsResult = await ATSService.fetchJobsForCompany(companyName);
+        
+        if (atsResult.success && atsResult.jobs.length > 0) {
+          allJobs.push(...atsResult.jobs);
+          sources.push(...atsResult.sources.map(s => `${s} (Free ATS)`));
+          console.log(`✅ ATS Free Methods: Found ${atsResult.jobs.length} jobs`);
+        }
+      } catch (atsError) {
+        console.warn('ATS methods failed:', atsError);
+      }
+    }
+
+    // 2. FALLBACK: Try edge functions if still no results
+    if (allJobs.length === 0) {
+      console.log('🔄 Step 3: Trying edge function fallbacks...');
+      
+      const searchPromises = [
+        { name: 'Google Jobs', promise: this.callEdgeFunctionWithTimeout('search-google-jobs', { companyName }, 5000) },
+        { name: 'Career Pages', promise: this.callEdgeFunctionWithTimeout('search-career-pages', { companyName }, 8000) },
+        { name: 'LinkedIn Jobs', promise: this.callEdgeFunctionWithTimeout('search-linkedin-jobs', { companyName }, 10000) },
+      ];
+
+      const results = await Promise.allSettled(searchPromises.map(p => p.promise));
+      
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const { jobs, source } = result.value;
+          if (jobs.length > 0) {
+            allJobs.push(...jobs);
+            sources.push(source);
+            console.log(`✓ ${searchPromises[index].name}: Found ${jobs.length} jobs`);
+          } else {
+            console.log(`○ ${searchPromises[index].name}: No jobs found`);
+          }
+        } else {
+          const errorMsg = `${searchPromises[index].name}: ${result.reason?.message || 'Failed'}`;
+          errors.push(errorMsg);
+          console.log(`✗ ${errorMsg}`);
+        }
+      });
+    }
+
+    // 3. LAST RESORT: Try comprehensive free methods if still no results
+    if (allJobs.length === 0) {
+      console.log('🔄 Step 4: Last resort - trying comprehensive free methods...');
+      
+      // Try Creative Free Methods (RSS, free APIs, etc.)
+      if (!isKnownCompany) { // Only if not already tried above
+        try {
+          const { CreativeJobSearchService } = await import('./CreativeJobSearchService');
+          const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
+            includeRSS: true,
+            includeFreeAPIs: true,
+            includeSocialMedia: true
+          });
+          
+          if (creativeResult.success && creativeResult.jobs.length > 0) {
+            allJobs.push(...creativeResult.jobs);
+            sources.push(...creativeResult.sources.map(s => `${s} (Free)`));
+            console.log(`✅ Creative Free Methods (Last Resort): Found ${creativeResult.jobs.length} jobs`);
+          }
+        } catch (creativeError) {
+          console.warn('Creative free methods failed:', creativeError);
+          errors.push('Creative Free Methods: Failed to load');
+        }
+      }
+
+      // Try ATS fallback if not already tried
+      if (allJobs.length === 0 && !isKnownCompany) {
         try {
           const { ATSService } = await import('./ATSService');
           const atsResult = await ATSService.fetchJobsForCompany(companyName);
@@ -414,7 +453,7 @@ export class MultiSourceJobService {
         }
       }
 
-      // 3. If STILL no jobs, try Comprehensive Apify (uses free $5 credits)
+      // Try Comprehensive Apify (uses free $5 credits) as absolute last resort
       if (allJobs.length === 0) {
         try {
           const apifyResult = await ApifyJobService.quickApifySearch(companyName);
@@ -422,7 +461,7 @@ export class MultiSourceJobService {
           if (apifyResult.success && apifyResult.jobs.length > 0) {
             allJobs.push(...apifyResult.jobs);
             sources.push(...apifyResult.sources.map(s => `${s} (Free Apify)`));
-            console.log(`✅ Comprehensive Apify (Free): Found ${apifyResult.jobs.length} jobs`);
+            console.log(`✅ Comprehensive Apify (Last Resort): Found ${apifyResult.jobs.length} jobs`);
           }
         } catch (apifyError) {
           console.warn('Comprehensive Apify failed:', apifyError);
