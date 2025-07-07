@@ -142,12 +142,13 @@ export class CreativeJobSearchService {
     return jobs;
   }
 
-  // Free job aggregation APIs
+  // Free job aggregation APIs with better filtering
   private static async searchFreeJobAPIs(companyName: string): Promise<{ jobs: JobResult[], source: string }> {
     const jobs: JobResult[] = [];
+    const companyLower = companyName.toLowerCase();
     
     try {
-      // Arbeitnow API (European and remote jobs)
+      // Arbeitnow API (European and remote jobs) - with better filtering
       const arbeitnowUrl = `https://www.arbeitnow.com/api/job-board-api?search=${encodeURIComponent(companyName)}`;
       
       try {
@@ -156,19 +157,36 @@ export class CreativeJobSearchService {
           const data = await response.json();
           
           if (data.data) {
-            data.data.slice(0, 10).forEach((job: any) => {
-              jobs.push({
-                title: job.title || 'Job Opening',
-                count: '1',
-                location: job.location || 'Remote',
-                sourceUrl: job.url || job.company_url || '#',
-                salary: job.salary || undefined,
-                jobType: job.job_types?.[0] || 'Full-time',
-                company: job.company_name || companyName,
-                atsSource: 'Arbeitnow',
-                description: job.description?.substring(0, 200),
-                datePosted: job.created_at ? this.formatDate(job.created_at) : undefined
-              });
+            // Filter for relevant jobs only
+            const relevantJobs = data.data.filter((job: any) => {
+              const jobCompany = (job.company_name || '').toLowerCase();
+              const jobTitle = (job.title || '').toLowerCase();
+              
+              // Only include if company name matches or job title mentions the company
+              return jobCompany.includes(companyLower) ||
+                     companyLower.includes(jobCompany) ||
+                     jobTitle.includes(companyLower) ||
+                     this.isCompanyRelated(job, companyName);
+            });
+            
+            relevantJobs.slice(0, 5).forEach((job: any) => {
+              // Only add jobs with valid dates (not too old)
+              const datePosted = job.created_at ? this.formatDate(job.created_at) : undefined;
+              
+              if (datePosted || !job.created_at) { // Include if no date or valid date
+                jobs.push({
+                  title: job.title || 'Job Opening',
+                  count: '1',
+                  location: job.location || 'Remote',
+                  sourceUrl: job.url || job.company_url || '#',
+                  salary: job.salary || undefined,
+                  jobType: job.job_types?.[0] || 'Full-time',
+                  company: job.company_name || companyName,
+                  atsSource: 'Arbeitnow',
+                  description: job.description?.substring(0, 200),
+                  datePosted: datePosted
+                });
+              }
             });
           }
         }
@@ -176,7 +194,7 @@ export class CreativeJobSearchService {
         console.warn('Arbeitnow API failed:', error);
       }
 
-      // Jobicy Remote Jobs API
+      // Jobicy Remote Jobs API - with better filtering
       try {
         const jobicyUrl = `https://jobicy.com/api/v2/remote-jobs?count=10&tag=${encodeURIComponent(companyName)}`;
         const response = await fetch(jobicyUrl);
@@ -185,19 +203,33 @@ export class CreativeJobSearchService {
           const data = await response.json();
           
           if (data.jobs) {
-            data.jobs.slice(0, 5).forEach((job: any) => {
-              jobs.push({
-                title: job.jobTitle || 'Remote Position',
-                count: '1',
-                location: 'Remote',
-                sourceUrl: job.url || '#',
-                salary: job.annualSalaryMin ? `$${job.annualSalaryMin} - $${job.annualSalaryMax}` : undefined,
-                jobType: job.jobType || 'Full-time',
-                company: job.companyName || companyName,
-                atsSource: 'Jobicy',
-                description: job.jobExcerpt?.substring(0, 200),
-                datePosted: job.pubDate ? this.formatDate(job.pubDate) : undefined
-              });
+            // Filter for relevant remote jobs
+            const relevantJobs = data.jobs.filter((job: any) => {
+              const jobCompany = (job.companyName || '').toLowerCase();
+              const jobTitle = (job.jobTitle || '').toLowerCase();
+              
+              return jobCompany.includes(companyLower) ||
+                     companyLower.includes(jobCompany) ||
+                     jobTitle.includes(companyLower);
+            });
+            
+            relevantJobs.slice(0, 3).forEach((job: any) => {
+              const datePosted = job.pubDate ? this.formatDate(job.pubDate) : undefined;
+              
+              if (datePosted || !job.pubDate) {
+                jobs.push({
+                  title: job.jobTitle || 'Remote Position',
+                  count: '1',
+                  location: 'Remote',
+                  sourceUrl: job.url || '#',
+                  salary: job.annualSalaryMin ? `$${job.annualSalaryMin} - $${job.annualSalaryMax}` : undefined,
+                  jobType: job.jobType || 'Full-time',
+                  company: job.companyName || companyName,
+                  atsSource: 'Jobicy',
+                  description: job.jobExcerpt?.substring(0, 200),
+                  datePosted: datePosted
+                });
+              }
             });
           }
         }
@@ -210,6 +242,22 @@ export class CreativeJobSearchService {
     }
 
     return { jobs, source: 'Free Job APIs' };
+  }
+
+  // Helper method to check if job is related to company
+  private static isCompanyRelated(job: any, companyName: string): boolean {
+    const companyLower = companyName.toLowerCase();
+    const searchFields = [
+      job.description || '',
+      job.tags?.join(' ') || '',
+      job.requirements || '',
+      job.skills?.join(' ') || ''
+    ];
+    
+    // Check if company name appears in job details
+    return searchFields.some(field => 
+      field.toLowerCase().includes(companyLower)
+    );
   }
 
   // Social media job monitoring (simplified version)
@@ -285,16 +333,42 @@ export class CreativeJobSearchService {
   }
 
   private static formatDate(dateStr: string): string | undefined {
+    if (!dateStr) return undefined;
+    
     try {
       const date = new Date(dateStr);
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - date.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return undefined;
+      }
+      
+      // Check if date is unreasonably old (more than 2 years)
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      
+      if (date < twoYearsAgo) {
+        return undefined; // Don't show very old dates
+      }
+      
+      const diffTime = now.getTime() - date.getTime();
+      
+      // Check if date is in the future
+      if (diffTime < 0) {
+        return 'Recently posted';
+      }
+      
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Today';
       if (diffDays === 1) return 'Yesterday';
       if (diffDays < 7) return `${diffDays} days ago`;
       if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-      return `${Math.floor(diffDays / 30)} months ago`;
+      if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+      
+      // If more than a year old, don't show it
+      return undefined;
     } catch {
       return undefined;
     }

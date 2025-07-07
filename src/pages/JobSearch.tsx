@@ -96,15 +96,37 @@ const JobSearch = () => {
       return;
     }
 
-    // Enhanced company name processing
+    // Enhanced company name processing with URL handling
     let processedCompanyName = companyName.trim();
     
-    // Remove common suffixes and clean up
-    processedCompanyName = processedCompanyName
-      .replace(/\.(com|org|net|io|co|inc|corp|ltd|llc)$/i, '')
-      .replace(/\s+(inc|corp|ltd|llc|company|co)\.?$/i, '')
-      .replace(/[^\w\s&.-]/g, '')
-      .trim();
+    // Handle URLs (extract company name from URL)
+    if (processedCompanyName.startsWith('http://') || processedCompanyName.startsWith('https://')) {
+      // Extract domain from URL
+      try {
+        const url = new URL(processedCompanyName);
+        let domain = url.hostname.replace('www.', '');
+        
+        // Convert domain to company name
+        processedCompanyName = domain
+          .replace(/\.(com|org|net|io|co|ai|app)$/i, '')
+          .split('.')[0] // Take first part if subdomain
+          .replace(/[-_]/g, ' ')
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+          
+        console.log(`Extracted company name from URL: ${processedCompanyName}`);
+      } catch (e) {
+        console.warn('Failed to parse URL, using as-is');
+      }
+    } else {
+      // Clean up regular company names
+      processedCompanyName = processedCompanyName
+        .replace(/\.(com|org|net|io|co|inc|corp|ltd|llc)$/i, '')
+        .replace(/\s+(inc|corp|ltd|llc|company|co)\.?$/i, '')
+        .replace(/[^\w\s&.-]/g, '')
+        .trim();
+    }
     
     console.log('Original company name:', companyName);
     console.log('Processed company name for search:', processedCompanyName);

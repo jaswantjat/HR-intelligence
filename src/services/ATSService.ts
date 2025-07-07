@@ -217,13 +217,37 @@ export class ATSService {
     try {
       const date = new Date(dateStr);
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - date.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return undefined;
+      }
+      
+      // Check if date is unreasonably old (more than 2 years)
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      
+      if (date < twoYearsAgo) {
+        return undefined; // Don't show very old dates
+      }
+      
+      const diffTime = now.getTime() - date.getTime();
+      
+      // Check if date is in the future
+      if (diffTime < 0) {
+        return 'Recently posted';
+      }
+      
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Today';
       if (diffDays === 1) return 'Yesterday';
       if (diffDays < 7) return `${diffDays} days ago`;
       if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-      return `${Math.floor(diffDays / 30)} months ago`;
+      if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+      
+      // If more than a year old, don't show it
+      return undefined;
     } catch {
       return undefined;
     }

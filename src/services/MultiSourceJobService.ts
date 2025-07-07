@@ -354,7 +354,7 @@ export class MultiSourceJobService {
         const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
           includeRSS: true,
           includeFreeAPIs: true,
-          includeSocialMedia: true
+          includeSocialMedia: false // Disable fake social media results
         });
         
         if (creativeResult.success && creativeResult.jobs.length > 0) {
@@ -422,7 +422,7 @@ export class MultiSourceJobService {
           const creativeResult = await CreativeJobSearchService.searchWithCreativeMethods(companyName, {
             includeRSS: true,
             includeFreeAPIs: true,
-            includeSocialMedia: true
+            includeSocialMedia: false // Disable fake social media results
           });
           
           if (creativeResult.success && creativeResult.jobs.length > 0) {
